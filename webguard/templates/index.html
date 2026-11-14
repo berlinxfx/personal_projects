@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebGuard — Instant Website & Link Safety Scanner</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --safe: #22c55e;
+      --warning: #eab308;
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 2rem 1rem;
+      display: flex;
+      justify-content: center;
+    }
+    .container { max-width: 680px; width: 100%; }
+    header { text-align: center; margin-bottom: 2rem; }
+    header h1 { margin: 0; font-size: 2rem; color: var(--accent); }
+    header p { color: var(--muted); margin-top: 0.5rem; }
+    .search-box {
+      display: flex;
+      gap: 0.5rem;
+      background: var(--card);
+      padding: 0.6rem;
+      border-radius: 12px;
+      border: 1px solid #334155;
+    }
+    input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: var(--text);
+      font-size: 1rem;
+      padding: 0.6rem;
+      outline: none;
+    }
+    button {
+      background: var(--accent);
+      color: #0f172a;
+      font-weight: 600;
+      border: none;
+      padding: 0.7rem 1.4rem;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .result-card {
+      margin-top: 1.5rem;
+      background: var(--card);
+      border-radius: 12px;
+      padding: 1.5rem;
+      border-left: 6px solid var(--accent);
+      display: none;
+    }
+    .safe { border-left-color: var(--safe); }
+    .warning { border-left-color: var(--warning); }
+    .danger { border-left-color: var(--danger); }
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .badge.safe { background: rgba(34,197,94,0.2); color: var(--safe); }
+    .badge.warning { background: rgba(234,179,8,0.2); color: var(--warning); }
+    .badge.danger { background: rgba(239,68,68,0.2); color: var(--danger); }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-top: 1.2rem;
+    }
+    .detail-box {
+      background: #0f172a;
+      padding: 1rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+    }
+    .detail-box strong { display: block; color: var(--muted); font-size: 0.75rem; text-transform: uppercase; margin-bottom: 0.3rem; }
+    ul { padding-left: 1.2rem; color: #fca5a5; }
+    .error { color: var(--danger); margin-top: 1rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🛡️ WebGuard</h1>
+      <p>Paste any website link to check SSL security, domain age, and phishing indicators before clicking.</p>
+    </header>
+
+    <div class="search-box">
+      <input type="text" id="urlInput" placeholder="e.g., example.com or https://suspicious-link.xyz" />
+      <button id="scanBtn" onclick="scanUrl()">Scan Link</button>
+    </div>
+
+    <div id="errorMsg" class="error"></div>
+
+    <div id="resultCard" class="result-card">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h2 id="domainTitle" style="margin:0;"></h2>
+        <span id="verdictBadge" class="badge"></span>
+      </div>
+      <p id="summaryText" style="color:var(--muted); margin-top:0.5rem;"></p>
+
+      <div id="flagsSection" style="display:none; margin-top:1rem;">
+        <strong>⚠️ Detected Warnings:</strong>
+        <ul id="flagsList"></ul>
+      </div>
+
+      <div class="grid">
+        <div class="detail-box">
+          <strong>🔒 HTTPS / SSL Status</strong>
+          <span id="sslDetail"></span>
+        </div>
+        <div class="detail-box">
+          <strong>📅 Domain Age (WHOIS)</strong>
+          <span id="whoisDetail"></span>
+        </div>
+        <div class="detail-box">
+          <strong>🌐 Server IP Address</strong>
+          <span id="ipDetail"></span>
+        </div>
+        <div class="detail-box">
+          <strong>📊 Risk Score</strong>
+          <span id="scoreDetail"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function scanUrl() {
+      const urlInput = document.getElementById("urlInput").value;
+      const btn = document.getElementById("scanBtn");
+      const errorMsg = document.getElementById("errorMsg");
+      const resultCard = document.getElementById("resultCard");
+
+      errorMsg.textContent = "";
+      resultCard.style.display = "none";
+      btn.disabled = true;
+      btn.textContent = "Scanning...";
+
+      try {
+        const res = await fetch("/api/scan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: urlInput })
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          errorMsg.textContent = data.error || "Something went wrong.";
+          return;
+        }
+
+        resultCard.className = `result-card ${data.level}`;
+        document.getElementById("domainTitle").textContent = data.domain;
+        const badge = document.getElementById("verdictBadge");
+        badge.textContent = data.verdict;
+        badge.className = `badge ${data.level}`;
+        document.getElementById("summaryText").textContent = data.summary;
+
+        document.getElementById("sslDetail").textContent = data.ssl.message;
+        document.getElementById("whoisDetail").textContent = data.whois.message;
+        document.getElementById("ipDetail").textContent = data.ip;
+        document.getElementById("scoreDetail").textContent = `${data.risk_score} / 100`;
+
+        const flagsSection = document.getElementById("flagsSection");
+        const flagsList = document.getElementById("flagsList");
+        flagsList.innerHTML = "";
+        if (data.reasons && data.reasons.length > 0) {
+          flagsSection.style.display = "block";
+          data.reasons.forEach(r => {
+            const li = document.createElement("li");
+            li.textContent = r;
+            flagsList.appendChild(li);
+          });
+        } else {
+          flagsSection.style.display = "none";
+        }
+
+        resultCard.style.display = "block";
+      } catch (err) {
+        errorMsg.textContent = "Network error while scanning.";
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Scan Link";
+      }
+    }
+  </script>
+</body>
+</html>
